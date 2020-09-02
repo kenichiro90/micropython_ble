@@ -37,3 +37,4 @@ else:
 
 utime.sleep_ms(5000)
 exec(open('micropython_ble.py').read())
+# exec(open('main.py').read())
