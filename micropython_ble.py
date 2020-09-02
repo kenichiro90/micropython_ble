@@ -14,6 +14,10 @@ SERVER = "mqtt.thingspeak.com"
 CHANNEL_ID = "1131265"
 WRITE_API_KEY = "S251B8I21QXCD7UB"
 
+# Set MQTT Client Settings
+client = MQTTClient("umqtt_client", SERVER)
+topic = "channels/" + CHANNEL_ID + "/publish/" + WRITE_API_KEY
+
 
 class ScanBle():
     def __init__(self):
@@ -30,10 +34,6 @@ class ScanBle():
         # Set Const. Values
         self._UTC_OFFSET = 9
         self.ble_num = 0
-
-        # Set MQTT Client Settings
-        self.client = MQTTClient("umqtt_client", SERVER)
-        self.topic = "channels/" + CHANNEL_ID + "/publish/" + WRITE_API_KEY
 
     def bt_irq(self, event, data):
         if event == self._IRQ_SCAN_RESULT:
@@ -59,16 +59,11 @@ class ScanBle():
         # Get Num of BLE Devices
         self.ble_num = len(self._li_addr)
         
-        # Send Data to MQTT Broker
-        payload = "field1=" + str(self.ble_num)
-        self.client.connect()
-        self.client.publish(self.topic, payload)
-        self.client.disconnect()
-        
         # Delete Class Variables
         print("ble_num: {}\n".format(self.ble_num))
-        del self._li_addr
-        del self.ble_num
+        return self.ble_num
+        # del self._li_addr
+        # del self.ble_num
 
 
 class AcclData():
@@ -84,10 +79,6 @@ class AcclData():
         self.np = NeoPixel(Pin(self.LED_GPIO), self.matrix_size_x * self.matrix_size_y)
         self.avg_gx, self.avg_gy, self.avg_gz = 0, 0, 0
         self.accl_diff = 0
-
-        # Set MQTT Client Settings
-        self.client = MQTTClient("umqtt_client", SERVER)
-        self.topic = "channels/" + CHANNEL_ID + "/publish/" + WRITE_API_KEY
 
         self.initialize_device()
 
@@ -139,7 +130,7 @@ class AcclData():
     def get_accl_diff(self):
         # Get Acceleration Data
         old_ax, old_ay, old_az = self.imu.getAccelData()
-        utime.sleep_ms(1000)
+        utime.sleep_ms(500)
         ax, ay, az = self.imu.getAccelData()
 
         # gx, gy, gz = ad.imu.getGyroData()
@@ -153,13 +144,14 @@ class AcclData():
         print("ax:{}, ay:{}, az:{}".format(ax, ay, az))
 
         # Send Data to MQTT Broker
-        payload = "field2=" + str(self.accl_diff)
-        self.client.connect()
-        self.client.publish(self.topic, payload)
-        self.client.disconnect()
+        # payload = "field2=" + str(self.accl_diff)
+        # self.client.connect()
+        # self.client.publish(self.topic, payload)
+        # self.client.disconnect()
         print("accl_diff:{}\n".format(self.accl_diff))
+        return self.accl_diff
 
-        del self.accl_diff
+        # del self.accl_diff
         # print("gx:{}, gy:{}, gz:{}".format(gx, gy, gz))
         # print("pitch:{}, roll:{}, yaw:{}".format(pitch, roll, yaw))
 
@@ -171,13 +163,19 @@ def main():
     while True:
         try:
             # Get Accl_Diff Data
-            ad.get_accl_diff()
-            utime.sleep_ms(19000)
+            accl_diff = ad.get_accl_diff()
+            utime.sleep_ms(9500)
 
             # # Scan BLE Devices
-            sb.scan(duration_ms=5000, interval_ms=1000, window_ms=1000)
-            utime.sleep_ms(15000)
+            ble_num = sb.scan(duration_ms=5000, interval_ms=1000, window_ms=1000)
+            utime.sleep_ms(10000)
 
+            # Send Data to MQTT Broker
+            payload = "field1=" + str(ble_num) + "&field2=" + str(accl_diff)
+            client.connect()
+            client.publish(topic, payload)
+            client.disconnect()
+        
             # Collect Garbages
             gc.collect()
         except KeyboardInterrupt:
