@@ -1,22 +1,11 @@
 import gc
-from ubluetooth import BLE, UUID, FLAG_NOTIFY, FLAG_READ, FLAG_WRITE
-from micropython import const
-import utime
-
-from umqtt.simple import MQTTClient
-
-from mpu6886 import MPU6886
-from neopixel import NeoPixel
 from machine import Pin, I2C
-
-# Set MQTT Broker Settings
-SERVER = "mqtt.thingspeak.com"
-CHANNEL_ID = "1131265"
-WRITE_API_KEY = "S251B8I21QXCD7UB"
-
-# Set MQTT Client Settings
-client = MQTTClient("umqtt_client", SERVER)
-topic = "channels/" + CHANNEL_ID + "/publish/" + WRITE_API_KEY
+from neopixel import NeoPixel
+from micropython import const
+from ubluetooth import BLE, UUID, FLAG_NOTIFY, FLAG_READ, FLAG_WRITE
+from umqtt.simple import MQTTClient
+from mpu6886 import MPU6886
+import utime
 
 
 class ScanBle():
@@ -62,8 +51,6 @@ class ScanBle():
         # Delete Class Variables
         print("ble_num: {}\n".format(self.ble_num))
         return self.ble_num
-        # del self._li_addr
-        # del self.ble_num
 
 
 class AcclData():
@@ -71,15 +58,8 @@ class AcclData():
         # Definitions for the ATOM Matrix
         self.MPU6886_SCL = const(21)
         self.MPU6886_SDA = const(25)
-        self.LED_GPIO = const(27)
-        self.PUSH_BTN = const(39)
-        self.matrix_size_x = const(5)
-        self.matrix_size_y = const(5)
-        self.color = (0, 0, 20) # Initial color: Blue
-        self.np = NeoPixel(Pin(self.LED_GPIO), self.matrix_size_x * self.matrix_size_y)
         self.avg_gx, self.avg_gy, self.avg_gz = 0, 0, 0
         self.accl_diff = 0
-
         self.initialize_device()
 
     def calibrateGyro(self, num):
@@ -121,7 +101,7 @@ class AcclData():
         # preferably level with the floor and not touch it during the procedure. (1s for 20 cycles)
         self.calibrateGyro(20)
 
-    def computeAngles(self, ax,ay,az):
+    def computeAngles(self, ax, ay, az):
         pitch = 180 * atan (ax / sqrt(ay ** 2 + az ** 2)) / pi
         roll = 180 * atan (ay / sqrt(ax ** 2 + az ** 2)) / pi
         yaw = 180 * atan (az / sqrt(ax ** 2 + ay ** 2)) / pi
@@ -142,45 +122,95 @@ class AcclData():
 
         print("old_ax:{}, old_ay:{}, old_az:{}".format(old_ax, old_ay, old_az))
         print("ax:{}, ay:{}, az:{}".format(ax, ay, az))
-
-        # Send Data to MQTT Broker
-        # payload = "field2=" + str(self.accl_diff)
-        # self.client.connect()
-        # self.client.publish(self.topic, payload)
-        # self.client.disconnect()
         print("accl_diff:{}\n".format(self.accl_diff))
         return self.accl_diff
 
-        # del self.accl_diff
         # print("gx:{}, gy:{}, gz:{}".format(gx, gy, gz))
         # print("pitch:{}, roll:{}, yaw:{}".format(pitch, roll, yaw))
 
 
+class PubMQTT():
+    def __init__(self):
+        # Set MQTT Broker Settings
+        self.SERVER = "mqtt.thingspeak.com"
+        self.CHANNEL_ID = "1134196"
+        self.WRITE_API_KEY = "HV3JD5ZR9KIOGV4V"
+
+        # Set MQTT Client Settings
+        self.topic = "channels/" + self.CHANNEL_ID + "/publish/" + self.WRITE_API_KEY
+        self.client = MQTTClient("umqtt_client", self.SERVER)
+
+    def pub_data(self, ble_num, accl_diff):
+        # Send Data to MQTT Broker
+        self.client.connect()
+        _payload = "field1=" + str(ble_num) + "&field2=" + "{:.3e}".format(accl_diff)
+        self.client.publish(self.topic, _payload)
+        self.client.disconnect()
+        return
+
+
+class DispLED():
+    def __init__(self):
+        # Initialize LED
+        self.LED_GPIO = const(27)
+        self.matrix_size_x = const(5)
+        self.matrix_size_y = const(5)
+        self.np = NeoPixel(Pin(self.LED_GPIO), self.matrix_size_x * self.matrix_size_y)
+
+    def turn_on_led(self, color_R, color_G, color_B):
+        for i in range(25):
+            self.np[i] = (color_R, color_G, color_B)
+        self.np.write()
+
+    def blink_led(self, pos, color_R, color_G, color_B):
+        self.np[pos] = (color_R, color_G, color_B)
+        self.np.write()
+        utime.sleep_ms(1000)
+        self.clear_led()
+
+    def clear_led(self):
+        for i in range(25):
+            self.np[i] = (0, 0, 0)
+        self.np.write()
+
+
+# Initialize Class
+sb = ScanBle()
+ad = AcclData()
+dl = DispLED()
+pm = PubMQTT()
+
 def main():
-    # Initialize Class
-    sb = ScanBle()
-    ad = AcclData()
+    cnt = 0
+    dl.clear_led()
+    dl.turn_on_led(20, 20, 20)
+    utime.sleep_ms(1000)
+    dl.clear_led()
+    utime.sleep_ms(1000)
     while True:
         try:
             # Get Accl_Diff Data
             accl_diff = ad.get_accl_diff()
-            utime.sleep_ms(9500)
+            dl.blink_led(cnt % 25, 20, 0, 0)
+            utime.sleep_ms(8500)
 
             # # Scan BLE Devices
             ble_num = sb.scan(duration_ms=5000, interval_ms=1000, window_ms=1000)
-            utime.sleep_ms(10000)
+            dl.blink_led(cnt % 25, 0, 0, 20)
+            utime.sleep_ms(4000)
 
             # Send Data to MQTT Broker
-            payload = "field1=" + str(ble_num) + "&field2=" + str(accl_diff)
-            client.connect()
-            client.publish(topic, payload)
-            client.disconnect()
-        
+            pm.pub_data(ble_num, accl_diff)
+            dl.blink_led(cnt % 25, 0, 20, 0)
+            utime.sleep_ms(9000)
+
             # Collect Garbages
             gc.collect()
+            cnt += 1
         except KeyboardInterrupt:
             break
-
+        except:
+            break
 
 if __name__ == '__main__':
     main()
