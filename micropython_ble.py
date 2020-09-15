@@ -38,12 +38,12 @@ class ScanBle():
         utime.sleep_ms(duration_ms)
         self._li_addr = list(set(self._li_addr))
 
-        # Parse Scanned Data
-        for i in range(len(self._li_addr)):
-            _date = utime.localtime(utime.mktime(utime.localtime()) + self._UTC_OFFSET * 3600)
-            _date = '{:04d}'.format(_date[0]) + '-' + '{:02d}'.format(_date[1]) + '-' + '{:02d}'.format(_date[2]) + \
-                        ' ' + '{:02d}'.format(_date[3]) + ':' + '{:02d}'.format(_date[4]) + ':' + '{:02d}'.format(_date[5])
-            print("Mode:ble, date:{} address:{}".format(_date, self._li_addr[i]))
+        # # Parse Scanned Data
+        # for i in range(len(self._li_addr)):
+        #     _date = utime.localtime(utime.mktime(utime.localtime()) + self._UTC_OFFSET * 3600)
+        #     _date = '{:04d}'.format(_date[0]) + '-' + '{:02d}'.format(_date[1]) + '-' + '{:02d}'.format(_date[2]) + \
+        #                 ' ' + '{:02d}'.format(_date[3]) + ':' + '{:02d}'.format(_date[4]) + ':' + '{:02d}'.format(_date[5])
+        #     print("Mode:ble, date:{} address:{}".format(_date, self._li_addr[i]))
         
         # Get Num of BLE Devices
         self.ble_num = len(self._li_addr)
@@ -140,11 +140,13 @@ class PubMQTT():
         self.topic = "channels/" + self.CHANNEL_ID + "/publish/" + self.WRITE_API_KEY
         self.client = MQTTClient("umqtt_client", self.SERVER)
 
-    def pub_data(self, ble_num, accl_diff):
+    def pub_data(self, ble_num, accl_diff, err_code=0):
         # Send Data to MQTT Broker
         self.client.connect()
-        _payload = "field1=" + str(ble_num) + "&field2=" + "{:.3e}".format(accl_diff)
+        _payload = "field1=" + str(ble_num) + "&field2=" + "{:.3e}".format(accl_diff) + "&field3=" + str(err_code)
         self.client.publish(self.topic, _payload)
+        print('send to: {}'.format(self.topic))
+        print('send data: {}\n'.format(_payload))
         self.client.disconnect()
         return
 
@@ -181,6 +183,25 @@ dl = DispLED()
 pm = PubMQTT()
 
 def main():
+    def make_err_log(e):
+        import sys
+        with open("error.log", "a") as f:
+            _date = utime.localtime(utime.mktime(utime.localtime()) + sb._UTC_OFFSET * 3600)
+            _date = '{:04d}'.format(_date[0]) + '-' + '{:02d}'.format(_date[1]) + '-' + '{:02d}'.format(_date[2]) + \
+                        ' ' + '{:02d}'.format(_date[3]) + ':' + '{:02d}'.format(_date[4]) + ':' + '{:02d}'.format(_date[5])
+            f.write("date:{}\n".format(_date))
+            sys.print_exception(e, f)
+            f.write('\n')
+    
+    def disp_err_status(color_R, color_G, color_B, err_code):
+        dl.clear_led()
+        utime.sleep_ms(20000)
+        pm.pub_data(ble_num=-1, accl_diff=-1, err_code=err_code)
+        dl.turn_on_led(color_R, color_G, color_B)
+        utime.sleep_ms(5000)
+        dl.clear_led()
+        utime.sleep_ms(1000)
+    
     cnt = 0
     dl.clear_led()
     dl.turn_on_led(20, 20, 20)
@@ -195,7 +216,7 @@ def main():
             utime.sleep_ms(8500)
 
             # # Scan BLE Devices
-            ble_num = sb.scan(duration_ms=5000, interval_ms=1000, window_ms=1000)
+            ble_num = sb.scan(duration_ms=5000, interval_ms=1500, window_ms=1000)
             dl.blink_led(cnt % 25, 0, 0, 20)
             utime.sleep_ms(4000)
 
@@ -209,7 +230,18 @@ def main():
             cnt += 1
         except KeyboardInterrupt:
             break
-        except:
+        except IndexError as e:
+            make_err_log(e)
+            import machine
+            machine.reset()
+        except MemoryError as e:
+            make_err_log(e)            
+            disp_err_status(20, 20, 0, err_code=1)
+            import machine
+            machine.reset()
+        except Exception as e:
+            make_err_log(e)            
+            disp_err_status(20, 0, 0, err_code=10)
             break
 
 if __name__ == '__main__':
