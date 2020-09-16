@@ -29,14 +29,16 @@ class ScanBle():
             # A single scan result.
             # addr_type, addr, connectable, rssi, adv_data = data
             _, addr, _, _, _ = data
-            self._li_addr.append(':'.join(['{:02X}'.format(addr[_]) for _ in range(len(addr))]))
+            # self._li_addr.append(':'.join(['{:02X}'.format(addr[_]) for _ in range(len(addr))]))
+            self._li_addr.append(str(addr))
+            self._li_addr = list(set(self._li_addr))
 
     def scan(self, duration_ms, interval_ms, window_ms):
         # Scan BLE Devices
         self._li_addr = []
         self.bt.gap_scan(duration_ms, interval_ms * 1000, window_ms * 1000)
         utime.sleep_ms(duration_ms)
-        self._li_addr = list(set(self._li_addr))
+        # self._li_addr = list(set(self._li_addr))
 
         # # Parse Scanned Data
         # for i in range(len(self._li_addr)):
