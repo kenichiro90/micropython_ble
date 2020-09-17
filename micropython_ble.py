@@ -3,7 +3,7 @@ from machine import Pin, I2C
 from neopixel import NeoPixel
 from micropython import const
 from ubluetooth import BLE, UUID, FLAG_NOTIFY, FLAG_READ, FLAG_WRITE
-from umqtt.simple import MQTTClient
+from umqtt.simple import MQTTClient, MQTTException
 from mpu6886 import MPU6886
 import utime
 
@@ -28,10 +28,11 @@ class ScanBle():
         if event == self._IRQ_SCAN_RESULT:
             # A single scan result.
             # addr_type, addr, connectable, rssi, adv_data = data
-            _, addr, _, _, _ = data
-            # self._li_addr.append(':'.join(['{:02X}'.format(addr[_]) for _ in range(len(addr))]))
-            self._li_addr.append(str(addr))
-            self._li_addr = list(set(self._li_addr))
+            _, addr, _, rssi, _ = data
+            if -65 <= rssi:
+                # self._li_addr.append(':'.join(['{:02X}'.format(addr[_]) for _ in range(len(addr))]))
+                self._li_addr.append(str(addr))
+                self._li_addr = list(set(self._li_addr))
 
     def scan(self, duration_ms, interval_ms, window_ms):
         # Scan BLE Devices
@@ -237,12 +238,17 @@ def main():
             import machine
             machine.reset()
         except MemoryError as e:
-            make_err_log(e)            
+            make_err_log(e)
             disp_err_status(20, 20, 0, err_code=1)
             import machine
             machine.reset()
+        except MQTTException as e:
+            make_err_log(e)
+            disp_err_status(0, 20, 20, err_code=5)
+            import machine
+            machine.reset()
         except Exception as e:
-            make_err_log(e)            
+            make_err_log(e)
             disp_err_status(20, 0, 0, err_code=10)
             break
 
